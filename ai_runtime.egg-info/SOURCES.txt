@@ -7,4 +7,7 @@ ai_runtime.egg-info/requires.txt
 ai_runtime.egg-info/top_level.txt
 app/__init__.py
 app/main.py
+tests/test_analysis.py
 tests/test_health.py
+tests/test_jobs.py
+tests/test_persistence.py
