@@ -18,3 +18,11 @@ services:
     depends_on: [migrator]
     ports:
       - "127.0.0.1:8330:8330"
+    networks:
+      default:
+      ecosystem:
+        aliases: [ai-runtime]
+
+networks:
+  ecosystem:
+    external: true
