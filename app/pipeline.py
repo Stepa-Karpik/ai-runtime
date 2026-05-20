@@ -46,10 +46,61 @@ def _ocr_image_bytes(data: bytes) -> str:
 def analyze_document_text(text: str) -> dict:
     normalized = ' '.join(text.split())
     sentences = [part.strip() for part in re.split(r'[.!?]', normalized) if part.strip()]
-    dates = re.findall(r'\b\d{4}-\d{2}-\d{2}\b', normalized)
-    entities = re.findall(r'\b\d+(?:[.,]\d+)?\b', normalized)
-    events = [
-        {'title': 'Найденная дата из документа', 'starts_at': date, 'description': normalized[:240] or None}
-        for date in dates
-    ]
-    return {'summary': '. '.join(sentences[:2]), 'entities': entities, 'dates': dates, 'events': events}
+    dates = sorted(set(re.findall(r'\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b', normalized)))
+    structured_entities = _extract_structured_entities(normalized)
+    topic_entities = _extract_topics(normalized)
+    entities = sorted({entity['name'] for entity in structured_entities} | set(topic_entities))
+    events = [{'title': 'Найденная дата из документа', 'starts_at': date, 'description': normalized[:240] or None} for date in dates]
+    return {
+        'summary': '. '.join(sentences[:2]) or normalized[:320],
+        'entities': entities,
+        'structured_entities': structured_entities + [{'kind': 'topic', 'name': topic} for topic in topic_entities],
+        'dates': dates,
+        'events': events,
+    }
+
+
+def _extract_structured_entities(text: str) -> list[dict[str, str]]:
+    entities: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def add(kind: str, name: str) -> None:
+        clean = _clean_name(name)
+        if len(clean) < 3:
+            return
+        key = (kind, clean.lower())
+        if key not in seen:
+            seen.add(key)
+            entities.append({'kind': kind, 'name': clean})
+
+    for match in re.finditer(r'\b[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\b', text):
+        add('person', match.group(0))
+    for match in re.finditer(r'\b(?:ООО|АО|ПАО|ЗАО|ИП|ОАО)\s+[«"]?[^,.;:\n]{2,80}', text):
+        add('company', match.group(0))
+    for match in re.finditer(r'\b(?:проект|Project)\s+[«"]?[^,.;:\n]{2,70}', text, re.IGNORECASE):
+        add('project', match.group(0))
+    for match in re.finditer(r'\b\d[\d\s.,]{1,18}\s*(?:₽|руб\.?|евро|eur|€|usd|\$)\b', text, re.IGNORECASE):
+        add('finance', match.group(0))
+    for match in re.finditer(r'\b(?:сумма|залог|депозит|штраф|оплата|сч[её]т|налог)[^,.;:\n]{0,60}', text, re.IGNORECASE):
+        add('finance', match.group(0))
+    return entities
+
+
+def _extract_topics(text: str) -> list[str]:
+    topics = []
+    rules = {
+        'Договор': r'\bдоговор\b',
+        'Недвижимость': r'\b(?:квартир|аренд|недвижим|помещени)\w*',
+        'Медицина': r'\b(?:медицин|клиник|врач|анализ|при[её]м)\w*',
+        'Налоги': r'\b(?:налог|деклараци|фнс)\w*',
+        'Страхование': r'\b(?:страхов|полис)\w*',
+        'Финансы': r'\b(?:сч[её]т|оплат|банк|выписк|плат[её]ж)\w*',
+    }
+    for name, pattern in rules.items():
+        if re.search(pattern, text, re.IGNORECASE):
+            topics.append(name)
+    return topics
+
+
+def _clean_name(value: str) -> str:
+    return re.sub(r'\s+', ' ', value.strip(' «"”.,;:()[]')).strip()
