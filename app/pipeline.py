@@ -8,7 +8,8 @@ ROLE_PREFIXES = r'(?:арендатор|арендодатель|заказчи�
 PERSON_STOPWORDS = {
     'ср', 'средняя', 'маржа', 'минимальная', 'максимальная', 'бонус', 'пакет', 'срок', 'вариант', 'обслуживание',
     'министерство', 'федеральное', 'государственное', 'образовательное', 'учреждение', 'введение', 'условиях',
-    'рамках', 'курса', 'алгоритмы', 'структуры', 'данных',
+    'рамках', 'курса', 'алгоритмы', 'структуры', 'данных', 'алгоритм', 'сортировка',
+    'российская', 'российской', 'федерация', 'федерации',
 }
 LOWERCASE_COURSE_WORDS = {'и', 'в', 'на', 'по', 'с', 'со', 'для', 'за', 'из', 'к', 'о', 'об'}
 
@@ -65,7 +66,7 @@ def analyze_document_text(text: str) -> dict:
     facts = _extract_facts(normalized)
     dates = sorted(set(re.findall(r'\b(?:\d{4}-\d{2}-\d{2}|\d{1,2}[./-]\d{1,2}[./-]\d{2,4})\b', normalized)))
     structured_entities = _extract_structured_entities(normalized, facts)
-    topic_entities = _extract_topics(normalized)
+    topic_entities = [] if 'Лабораторная работа' in facts else _extract_topics(normalized)
     summary_items = facts + topic_entities
     summary = '; '.join(dict.fromkeys(summary_items[:8]))
     if not summary:
@@ -87,7 +88,7 @@ def _extract_facts(text: str) -> list[str]:
             facts.append(city)
     for year in sorted(set(re.findall(r'\b20\d{2}\s*год\b', text, re.IGNORECASE))):
         facts.append(year.replace('  ', ' '))
-    m = re.search(r'курс[а]?\s+([А-ЯЁA-Z][^.;:\n]{4,80}?)(?:\s+г\.?\s|\s+20\d{2}|$)', text, re.IGNORECASE)
+    m = re.search(r'курс[а]?\s+([А-ЯЁA-Z][^.;:\n]{4,80}?)(?:\s+г\.?\s|\s+20\d{2}|[.;]|$)', text, re.IGNORECASE)
     if m:
         course = _clean_course_title(m.group(1))
         if course:
@@ -132,14 +133,14 @@ def _extract_structured_entities(text: str, facts: list[str]) -> list[dict[str, 
         bare = re.match(r'\d[\d\s.,]{0,18}', amount)
         if bare:
             add('finance', bare.group(0).strip())
-    for match in re.finditer(r'\b(?:сумма|залог|депозит|штраф|оплата|сч[её]т|налог)[^,.;:\n]{0,60}', text, re.IGNORECASE):
+    for match in re.finditer(r'\b(?:сумма|залог|депозит|штраф|оплата|сч[её]т(?!чик)|налог)[^,.;:\n]{0,60}', text, re.IGNORECASE):
         add('finance', match.group(0))
     return entities
 
 
 def _extract_topics(text: str) -> list[str]:
     topics = []
-    rules = {'Договор': r'\bдоговор\b', 'Недвижимость': r'\b(?:квартир|аренд|недвижим|помещени)\w*', 'Медицина': r'\b(?:медицин|клиник|врач|анализ|при[её]м)\w*', 'Налоги': r'\b(?:налог|деклараци|фнс)\w*', 'Страхование': r'\b(?:страхов|полис)\w*', 'Финансы': r'\b(?:сч[её]т|оплат|банк|выписк|плат[её]ж)\w*'}
+    rules = {'Договор': r'\bдоговор\b', 'Недвижимость': r'\b(?:квартир|аренд|недвижим|помещени)\w*', 'Медицина': r'\b(?:медицин|клиник|врач|при[её]м\s+врача|медицинск\w+\s+при[её]м)\w*', 'Налоги': r'\b(?:налог|деклараци|фнс)\w*', 'Страхование': r'\b(?:страхов|полис)\w*', 'Финансы': r'\b(?:сч[её]т(?!чик)|оплат|банк|выписк|плат[её]ж)\w*'}
     for name, pattern in rules.items():
         if re.search(pattern, text, re.IGNORECASE):
             topics.append(name)

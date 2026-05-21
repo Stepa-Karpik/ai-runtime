@@ -57,3 +57,16 @@ def test_person_extraction_strips_roles_and_rejects_business_phrases():
     assert 'Карпов Степан' in people
     assert 'Карпов Степан Викторович' in people
     assert 'Тимурова Елена Игоревна' in people
+
+
+def test_lab_report_summary_does_not_add_unrelated_topics_or_fake_people():
+    text = 'Отчетная работа в рамках курса АЛГОРИТМЫ И СТРУКТУРЫ ДАННЫХ. Алгоритм Бойера. Сортировка Шелла. Счёт дополнительной памяти. Ростов-на-Дону 2026 год ДГТУ.'
+    response = client.post('/api/v1/analyze-content', json={
+        'filename': 'lab.txt',
+        'content_base64': base64.b64encode(text.encode()).decode(),
+    })
+    payload = response.json()
+    assert payload['summary'] == 'Лабораторная работа; Ростов-на-Дону; 2026 год; Алгоритмы и структуры данных; ДГТУ'
+    assert not [entity for entity in payload['structured_entities'] if entity['kind'] == 'person']
+    assert {'kind': 'topic', 'name': 'Финансы'} not in payload['structured_entities']
+    assert {'kind': 'topic', 'name': 'Медицина'} not in payload['structured_entities']
