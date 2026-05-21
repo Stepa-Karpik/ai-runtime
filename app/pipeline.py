@@ -104,6 +104,7 @@ def _extract_facts(text: str) -> list[str]:
 def _extract_structured_entities(text: str, facts: list[str]) -> list[dict[str, str]]:
     entities: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
+    is_lab_report = 'Лабораторная работа' in facts
     def add(kind: str, name: str) -> None:
         clean = _clean_name(name)
         if kind == 'person':
@@ -125,16 +126,17 @@ def _extract_structured_entities(text: str, facts: list[str]) -> list[dict[str, 
     for pattern, city in CITY_PATTERNS:
         if re.search(pattern, text, re.IGNORECASE):
             add('city', city)
-    for match in re.finditer(r'\b(?:проект|Project)\s+[«"]?[^,.;:\n]{2,70}', text, re.IGNORECASE):
-        add('project', match.group(0))
-    for match in re.finditer(r'\b\d[\d\s.,]{1,18}\s*(?:₽|руб\.?|евро|eur|€|usd|\$)\b', text, re.IGNORECASE):
-        amount = match.group(0)
-        add('finance', amount)
-        bare = re.match(r'\d[\d\s.,]{0,18}', amount)
-        if bare:
-            add('finance', bare.group(0).strip())
-    for match in re.finditer(r'\b(?:сумма|залог|депозит|штраф|оплата|сч[её]т(?!чик)|налог)[^,.;:\n]{0,60}', text, re.IGNORECASE):
-        add('finance', match.group(0))
+    if not is_lab_report:
+        for match in re.finditer(r'\b(?:проект|Project)\s+[«"]?[^,.;:\n]{2,70}', text, re.IGNORECASE):
+            add('project', match.group(0))
+        for match in re.finditer(r'\b\d[\d\s.,]{1,18}\s*(?:₽|руб\.?|евро|eur|€|usd|\$)\b', text, re.IGNORECASE):
+            amount = match.group(0)
+            add('finance', amount)
+            bare = re.match(r'\d[\d\s.,]{0,18}', amount)
+            if bare:
+                add('finance', bare.group(0).strip())
+        for match in re.finditer(r'\b(?:сумма|залог|депозит|штраф|оплата|сч[её]т(?!чик)|налог)[^,.;:\n]{0,60}', text, re.IGNORECASE):
+            add('finance', match.group(0))
     return entities
 
 
