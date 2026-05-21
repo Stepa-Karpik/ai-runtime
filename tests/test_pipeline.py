@@ -23,3 +23,37 @@ def test_analyze_content_uses_ocr_fallback_for_images(monkeypatch):
     })
     assert response.json()['extraction_method'] == 'ocr'
     assert response.json()['events'][0]['starts_at'] == '2026-08-10'
+
+
+def test_semantic_summary_rejects_uppercase_course_words_as_people():
+    text = (
+        'МИНИСТЕРСТВО НАУКИ И ВЫСШЕГО ОБРАЗОВАНИЯ РОССИЙСКОЙ ФЕДЕРАЦИИ '
+        'ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ БЮДЖЕТНОЕ ОБРАЗОВАТЕЛЬНОЕ УЧРЕЖДЕНИЕ '
+        'ВЫСШЕГО ОБРАЗОВАНИЯ «ДОНСКОЙ ГОСУДАРСТВЕННЫЙ ТЕХНИЧЕСКИЙ УНИВЕРСИТЕТ» (ДГТУ) '
+        'ОТЧЕТНАЯ РАБОТА в рамках курса АЛГОРИТМЫ И СТРУКТУРЫ ДАННЫХ '
+        'г. Ростов-на-Дону 2026 год Лабораторные работы'
+    )
+    response = client.post('/api/v1/analyze-content', json={
+        'filename': 'algorithms.txt',
+        'content_base64': base64.b64encode(text.encode()).decode(),
+    })
+
+    payload = response.json()
+    assert payload['summary'] == 'Лабораторная работа; Ростов-на-Дону; 2026 год; Алгоритмы и структуры данных; ДГТУ; Лабораторные работы'
+    assert {'kind': 'company', 'name': 'ДГТУ'} in payload['structured_entities']
+    assert {'kind': 'city', 'name': 'Ростов-на-Дону'} in payload['structured_entities']
+    assert not [entity for entity in payload['structured_entities'] if entity['kind'] == 'person']
+
+
+def test_person_extraction_strips_roles_and_rejects_business_phrases():
+    text = 'Арендатор Карпов Степан. Карпов Степан Викторович. Ср Маржа Минимальная. Арендодатель Тимурова Елена Игоревна.'
+    response = client.post('/api/v1/analyze-content', json={
+        'filename': 'lease.txt',
+        'content_base64': base64.b64encode(text.encode()).decode(),
+    })
+    people = [entity['name'] for entity in response.json()['structured_entities'] if entity['kind'] == 'person']
+
+    assert 'Ср Маржа Минимальная' not in people
+    assert 'Карпов Степан' in people
+    assert 'Карпов Степан Викторович' in people
+    assert 'Тимурова Елена Игоревна' in people
